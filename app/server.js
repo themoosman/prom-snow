@@ -7,6 +7,13 @@ var querystring = require('querystring');
 var bodyParser = require('body-parser')
 var jsonParser = bodyParser.json()
 
+var snowInstance = process.env.SNOW_INSTANCE
+var clientID = process.env.SNOW_CLIENT_ID
+var clientSecret = process.env.SNOW_CLIENT_SECRET
+var userName = process.env.SNOW_USERNAME
+var userPasswd = process.env.SNOW_PASSWORD
+var instanceURL = 'https://'.concat(snowInstance, '.service-now.com')
+
 // Constants
 const PORT = 8080;
 const HOST = '0.0.0.0';
@@ -18,15 +25,15 @@ const app = express();
 
 const  itsmLogin = async () => {
   const itsmLoginRequestConstruct ={
-    baseURL: "https://<your service now>.service-now.com/oauth_token.do",
+    baseURL: instanceURL.concat('/oauth_token.do'),
     method: "POST",
     rejectUnauthorized: false,
     data: querystring.stringify({
       grant_type: 'password',   
-      client_id: '<client_id>', // Process.env.client_id  to obtain from environment variables
-      client_secret: '<client_secret>', // Process.env.client_secret  to obtain from environment variables
-      username: '<username>', // Process.env.username  to obtain from environment variables
-      password: '<password>'  // Process.env.password  to obtain from environment variables
+      client_id: clientID,
+      client_secret: clientSecret,
+      username: userName,
+      password: userPasswd
       }),
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded'
@@ -44,7 +51,7 @@ const constructUniqueString = (alert) => {
 // This is a search function to unique identify your record , which will decide to create a new or update an existing record
 const searchQuery = async (login,uniqueString) => {
   const itsmSearchConstruct ={
-    baseURL: "https://<your service now>.service-now.com/api/now/table/incident",
+    baseURL: instanceURL.concat('/api/now/table/incident'),
     method: "GET",
     rejectUnauthorized: false,
     params: {
@@ -66,7 +73,7 @@ const searchQuery = async (login,uniqueString) => {
 const createRecord = async (login,uniqueString,alert) => {
 
   const itsmCreateConstruct ={
-    baseURL: "https://<your service now>.service-now.com/api/now/table/incident",
+    baseURL: instanceURL.concat('/api/now/table/incident'),
     method: "POST",
     rejectUnauthorized: false,
     data: {
@@ -88,7 +95,7 @@ const createRecord = async (login,uniqueString,alert) => {
 const updateRecord = async (login,sys_id,alert) => {
 
   const itsmUpdateConstruct ={
-    baseURL: "https://<your service now>.service-now.com/api/now/table/incident/"+sys_id,
+    baseURL: instanceURL.concat('/api/now/table/incident/', sys_id),
     method: "PUT",
     rejectUnauthorized: false,
     data: {
@@ -110,7 +117,7 @@ const closeRecord = async (login,sys_id,alert) => {
 
 
   const itsmCloseConstruct ={
-    baseURL: "https://<your service now>.service-now.com/api/now/table/incident/"+sys_id,
+    baseURL: instanceURL.concat('/api/now/table/incident/', sys_id),
     method: "PUT",
     rejectUnauthorized: false,
     data: {
@@ -138,22 +145,22 @@ const requestParse = async (body) => {
   body.alerts.forEach(async (alert) => {
         try {    
           
-                  console.log("Alert result")
-                  console.log(JSON.stringify(alert))
-                  const result = await searchQuery(login,constructUniqueString(alert))
-                  
-                  console.log("Search array")
-                  console.log(JSON.stringify(result))
-                  if(result.length == 0 && alert.status === "firing") {  // no record exists create new record
-                    await createRecord(login,constructUniqueString(alert),alert)
-                  } else if(result.length == 1 && alert.status === "firing") { // update record with last info
-                    await updateRecord(login,result[0].sys_id,alert)
-                  } else if(result.length == 1 && alert.status === "resolved") { // resolve record
-                    await closeRecord(login,result[0].sys_id,alert)
-                  } else { // somthing is wrong
-                    console.log("more than 1 record found for search criteria")
-                    console.log(alert)
-                    console.log("Search string: "+constructUniqueString(alert))
+              console.log("Alert result")
+              console.log(JSON.stringify(alert))
+              const result = await searchQuery(login,constructUniqueString(alert))
+              
+              console.log("Search array")
+              console.log(JSON.stringify(result))
+              if(result.length == 0 && alert.status === "firing") {  // no record exists create new record
+                await createRecord(login,constructUniqueString(alert),alert)
+              } else if(result.length == 1 && alert.status === "firing") { // update record with last info
+                await updateRecord(login,result[0].sys_id,alert)
+              } else if(result.length == 1 && alert.status === "resolved") { // resolve record
+                await closeRecord(login,result[0].sys_id,alert)
+              } else { // somthing is wrong
+                console.log("more than 1 record found for search criteria")
+                console.log(alert)
+                console.log("Search string: "+constructUniqueString(alert))
                   }
          }
          catch (e) {
@@ -165,10 +172,16 @@ const requestParse = async (body) => {
 
 
 app.post('/',jsonParser, async (req, res) => {
+  var date_time = new Date();
+  console.log('Received webhook from AlertManager: ' + date_time)
   await requestParse(req.body)
   res.send('Success');
 });
 
 app.listen(PORT, HOST, () => {
   console.log(`Running on http://${HOST}:${PORT}`);
+  console.log('SNOW Instance: ' + snowInstance);
+  console.log('Client ID: ' + clientID);
+  console.log('Username: ' + userPasswd);
+  console.log('instanceURL: ' + instanceURL);
 });
